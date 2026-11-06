@@ -303,12 +303,7 @@ export class DialerService {
       await tx.$queryRaw`SELECT id FROM calls WHERE id = ${callId}::uuid FOR UPDATE`;
       await tx.callLeg.updateMany({ where: { id: leg.id, status: 'QUEUED' }, data: { status: 'INITIATED', initiatedAt: new Date() } });
       await tx.callLeg.updateMany({ where: { id: leg.id, providerRequestId: null }, data: { providerRequestId } });
-      const item = call.queueItemId ? await tx.queueItem.findUnique({ where: { id: call.queueItemId } }) : null;
-      const attempt = (item?.attempts ?? 0) + 1;
-      await tx.call.update({ where: { id: callId }, data: { countedAsAttempt: true, attemptNumber: attempt } });
-      if (item) await tx.queueItem.update({ where: { id: item.id }, data: { attempts: { increment: 1 }, lastAttemptAt: new Date() } });
-      await tx.lead.update({ where: { id: call.leadId }, data: { attemptCount: { increment: 1 }, lastCallAt: new Date() } });
-      await tx.leadActivity.create({ data: { tenantId, leadId: call.leadId, type: 'CALL_ATTEMPT', actorMembershipId: call.membershipId, data: { callId, attempt } } });
+      await this.lifecycle.markAttempt(tx, call);
       return tx.call.findUniqueOrThrow({ where: { id: callId }, include: { legs: true } });
     });
     if (isTerminalCall(after.status as CallStatus)) {

@@ -9,10 +9,9 @@ import { AppModule } from './app.module';
 import { AppConfig } from './config/config';
 import { SocketIoAdapter } from './infra/realtime/socket-io.adapter';
 
-export async function createApp(): Promise<NestExpressApplication> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true, rawBody: true });
+/** Apply the production HTTP configuration (also used by integration tests). */
+export function configureApp(app: NestExpressApplication): NestExpressApplication {
   const config = app.get(AppConfig);
-  app.useLogger(app.get(Logger));
   app.set('trust proxy', config.env.TRUST_PROXY);
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
   app.use(cookieParser());
@@ -20,7 +19,14 @@ export async function createApp(): Promise<NestExpressApplication> {
   app.enableCors({ origin: config.env.WEB_ORIGIN, credentials: true });
   app.useWebSocketAdapter(new SocketIoAdapter(app, config.env.WEB_ORIGIN));
   app.enableShutdownHooks();
+  return app;
+}
 
+export async function createApp(): Promise<NestExpressApplication> {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true, rawBody: true });
+  const config = app.get(AppConfig);
+  app.useLogger(app.get(Logger));
+  configureApp(app);
   if (config.env.ENABLE_API_DOCS) {
     const doc = new DocumentBuilder()
       .setTitle('Calling CRM API')

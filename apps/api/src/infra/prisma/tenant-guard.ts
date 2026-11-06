@@ -90,7 +90,7 @@ export function whereHasTenant(where: unknown): boolean {
 }
 
 function dataHasTenant(data: unknown): boolean {
-  if (Array.isArray(data)) return data.length > 0 && data.every((d) => dataHasTenant(d));
+  if (Array.isArray(data)) return data.every((d) => dataHasTenant(d)); // empty batches write nothing
   if (!data || typeof data !== 'object') return false;
   const d = data as Record<string, unknown>;
   return (typeof d.tenantId === 'string' && d.tenantId.length > 0) || (!!d.tenant && typeof d.tenant === 'object');

@@ -68,7 +68,7 @@ export function loadDotEnv(): void {
   if (loaded) return;
   loaded = true;
   const file = resolve(process.cwd(), '.env');
-  if (process.env.NODE_ENV !== 'production' && existsSync(file) && typeof process.loadEnvFile === 'function') {
+  if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test' && existsSync(file) && typeof process.loadEnvFile === 'function') {
     process.loadEnvFile(file);
   }
 }

@@ -110,6 +110,21 @@ export class CallLifecycleService {
     await this.process(eventId, hydrateEvent(row.payload));
   }
 
+  /**
+   * Count the customer attempt exactly once, whichever happens first: the dialer confirming the
+   * provider accepted the call, or a provider event for the customer leg.
+   */
+  async markAttempt(tx: Tx, call: { id: string; tenantId: string; leadId: string; membershipId: string; queueItemId: string | null }): Promise<boolean> {
+    const item = call.queueItemId ? await tx.queueItem.findUnique({ where: { id: call.queueItemId } }) : null;
+    const attempt = (item?.attempts ?? 0) + 1;
+    const res = await tx.call.updateMany({ where: { id: call.id, tenantId: call.tenantId, countedAsAttempt: false }, data: { countedAsAttempt: true, attemptNumber: attempt } });
+    if (res.count === 0) return false;
+    if (item) await tx.queueItem.update({ where: { id: item.id }, data: { attempts: { increment: 1 }, lastAttemptAt: new Date() } });
+    await tx.lead.update({ where: { id: call.leadId }, data: { attemptCount: { increment: 1 }, lastCallAt: new Date() } });
+    await tx.leadActivity.create({ data: { tenantId: call.tenantId, leadId: call.leadId, type: 'CALL_ATTEMPT', actorMembershipId: call.membershipId, data: { callId: call.id, attempt } } });
+    return true;
+  }
+
   /** Emit a system-generated end for a leg (provider errors, compliance blocks, recovery). */
   async systemEndLeg(call: { id: string; tenantId: string; provider: 'PLIVO' | 'MOCK' }, legId: string, endStatus: LegEndStatus, cause: string): Promise<void> {
     await this.ingest({
@@ -190,6 +205,11 @@ export class CallLifecycleService {
           if (call.provider === 'PLIVO' && updatedLeg.costSource !== 'PROVIDER' && updatedLeg.providerCallId) effects.push({ kind: 'FETCH_CDR', legId: leg.id });
         }
 
+        let countedAsAttempt = call.countedAsAttempt;
+        if (leg.role === 'CUSTOMER' && t.changed && evt.source !== 'system' && !countedAsAttempt) {
+          countedAsAttempt = (await this.markAttempt(tx, call)) || countedAsAttempt;
+        }
+
         const agentLeg = legs.find((l) => l.role === 'AGENT') ?? null;
         const customerLeg = legs.find((l) => l.role === 'CUSTOMER') ?? null;
         const snap = (l: CallLeg | null) => (l ? { status: l.status, answered: l.everAnswered } : null);
@@ -223,7 +243,7 @@ export class CallLifecycleService {
             callData.hangupSource = failedLeg?.hangupSource ?? null;
             callData.failureReason = this.failureReason(next, call, customerLeg, failedLeg);
             await tx.call.update({ where: { id: call.id }, data: callData });
-            await this.finalize(tx, { ...call, ...(callData as Partial<Call>), status: next } as Call, next, effects);
+            await this.finalize(tx, { ...call, ...(callData as Partial<Call>), countedAsAttempt, status: next } as Call, next, effects);
             await markProcessed(t.changed ? undefined : `ignored: ${t.ignoredReason}`);
             snapshot = await tx.call.findUnique({ where: { id: call.id }, include: { legs: true } });
             return;

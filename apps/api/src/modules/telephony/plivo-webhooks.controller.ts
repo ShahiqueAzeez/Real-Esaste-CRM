@@ -40,7 +40,7 @@ export class PlivoWebhooksController {
     const { callId, legId, role } = parsed.data;
     const leg = await this.prisma.system.callLeg.findUnique({ where: { id: legId }, include: { call: true } });
     if (!leg || leg.callId !== callId || leg.provider !== 'PLIVO' || (role && leg.role.toLowerCase() !== role)) throw Errors.notFound();
-    const { authTokens } = await this.registry.resolve(leg.tenantId);
+    const { authTokens, provider } = await this.registry.resolve(leg.tenantId);
     const valid = verifyPlivoSignature({
       method: 'POST',
       url: `${this.config.env.PUBLIC_BASE_URL}${req.originalUrl}`,
@@ -52,7 +52,7 @@ export class PlivoWebhooksController {
       this.logger.warn(`Rejected Plivo callback with invalid signature for leg ${legId}`);
       throw Errors.forbidden('Invalid signature');
     }
-    return { leg, call: leg.call, ids: { tenantId: leg.tenantId, callId, legId } };
+    return { leg, call: leg.call, ids: { tenantId: leg.tenantId, callId, legId }, costCurrency: provider?.costCurrency ?? null };
   }
 
   @Post('answer')
@@ -66,6 +66,16 @@ export class PlivoWebhooksController {
     await this.lifecycle.ingest(plivoLegEvent('answer', params, ids, true));
     const tenant = await this.prisma.system.tenant.findUniqueOrThrow({ where: { id: call.tenantId }, select: { settings: true } });
     const settings = parseTenantSettings(tenant.settings);
+    try {
+      return this.buildAnswer(call, leg, settings);
+    } catch (err) {
+      // Never leave Plivo without valid XML: end the leg and surface the configuration problem.
+      this.logger.error(`Could not build answer XML for leg ${leg.id}: ${(err as Error).message}. Check PUBLIC_BASE_URL is a public https URL.`);
+      return PlivoProvider.hangupXml('error');
+    }
+  }
+
+  private buildAnswer(call: { id: string; recordingEnabled: boolean }, leg: { id: string; role: string }, settings: ReturnType<typeof parseTenantSettings>): string {
     return PlivoProvider.answerXml({
       role: leg.role === 'AGENT' ? 'agent' : leg.role === 'CUSTOMER' ? 'customer' : 'supervisor',
       mpcName: PlivoProvider.mpcName(call.id),
@@ -90,8 +100,8 @@ export class PlivoWebhooksController {
   @Post('hangup')
   @HttpCode(200)
   async hangup(@Req() req: Request, @Query() query: unknown) {
-    const { ids } = await this.authenticate(req, query);
-    const r = await this.lifecycle.ingest(plivoLegEvent('hangup', req.body as PlivoParams, ids, true));
+    const { ids, costCurrency } = await this.authenticate(req, query);
+    const r = await this.lifecycle.ingest({ ...plivoLegEvent('hangup', req.body as PlivoParams, ids, true), costCurrency });
     return { ok: true, duplicate: r.duplicate };
   }
 

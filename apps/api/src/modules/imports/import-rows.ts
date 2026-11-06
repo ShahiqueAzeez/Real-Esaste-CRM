@@ -67,7 +67,13 @@ export function parseDate(raw: string | undefined): Date | null | 'invalid' {
   if (!s) return null;
   // Accept ISO and DD/MM/YYYY (common in India).
   const dmy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(s);
-  const d = dmy ? new Date(Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]))) : new Date(s);
+  if (dmy) {
+    const [day, month, year] = [Number(dmy[1]), Number(dmy[2]), Number(dmy[3])];
+    const d = new Date(Date.UTC(year, month - 1, day));
+    // Reject impossible dates such as 31/31/2026 instead of letting them roll over.
+    return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day ? d : 'invalid';
+  }
+  const d = new Date(s);
   return Number.isNaN(d.getTime()) ? 'invalid' : d;
 }
 

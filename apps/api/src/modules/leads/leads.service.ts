@@ -67,7 +67,8 @@ export class LeadsService {
 
   async list(ctx: RequestContext, q: LeadListQuery) {
     const where = await this.buildWhere(ctx, q);
-    const orderBy: Prisma.LeadOrderByWithRelationInput = { [q.sort]: { sort: q.order, nulls: 'last' } } as Prisma.LeadOrderByWithRelationInput;
+    const nullable = q.sort === 'lastCallAt' || q.sort === 'nextCallbackAt';
+    const orderBy = { [q.sort]: nullable ? { sort: q.order, nulls: 'last' } : q.order } as Prisma.LeadOrderByWithRelationInput;
     const [rows, total] = await Promise.all([
       this.prisma.db.lead.findMany({
         where,

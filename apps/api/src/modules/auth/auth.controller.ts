@@ -17,7 +17,8 @@ import { AuthService } from './auth.service';
 import { CSRF_COOKIE, SessionService } from './session.service';
 
 const meta = (req: Request) => ({ ip: req.ip, userAgent: req.headers['user-agent'] });
-const STRICT = { default: { limit: 10, ttl: 60_000 } };
+/** Per-IP limit for sign-in and token endpoints (account lockout applies separately). */
+const STRICT = { default: { limit: Number(process.env.AUTH_RATE_LIMIT_PER_MIN ?? 10), ttl: 60_000 } };
 
 @ApiTags('auth')
 @Controller('auth')
