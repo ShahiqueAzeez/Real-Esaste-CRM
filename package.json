@@ -26,11 +26,11 @@
     "db:seed": "npm run db:seed -w @crm/api",
     "bootstrap:admin": "npm run bootstrap:admin -w @crm/api --",
     "typecheck": "npm run typecheck -w @crm/shared && npm run typecheck -w @crm/api && npm run typecheck -w @crm/web",
-    "lint": "npm run lint -w @crm/web",
     "test": "npm run test -w @crm/shared && npm run test:unit -w @crm/api && npm run test:int -w @crm/api",
     "test:unit": "npm run test -w @crm/shared && npm run test:unit -w @crm/api",
     "test:int": "npm run test:int -w @crm/api",
-    "test:e2e": "playwright test -c e2e/playwright.config.ts"
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "test:e2e:stack": "bash scripts/e2e.sh"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

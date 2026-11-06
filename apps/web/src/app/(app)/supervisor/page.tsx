@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, EmptyState, Skeleton } from '@/components/ui/feedback';
 import { PageHeader, StatCard } from '@/components/ui/page';
 import { api, errorMessage } from '@/lib/api';
-import { formatClock, formatDuration, formatNumber, titleCase } from '@/lib/format';
+import { formatClock, formatDuration, formatNumber } from '@/lib/format';
 import { useRealtime, useRealtimeEvent } from '@/lib/realtime';
 import { usePermissions } from '@/lib/session';
 import { BrowserPhone, type PhoneState } from '@/lib/telephony/browser-phone';
@@ -196,7 +196,6 @@ export default function SupervisorPage() {
           </div>
         </Card>
       </div>
-      <p className="mt-4 text-xs text-muted">Status values: {['READY', 'DIALING', 'ON_CALL', 'WRAP_UP', 'PAUSED', 'OFFLINE'].map(titleCase).join(' · ')}</p>
     </div>
   );
 }
