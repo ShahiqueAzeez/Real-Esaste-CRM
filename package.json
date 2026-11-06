@@ -1,0 +1,41 @@
+{
+  "name": "calling-crm",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Multi-tenant cloud calling CRM for real estate teams (NestJS + Next.js + PostgreSQL + Redis + Plivo).",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "npm run build -w @crm/shared && npm run build -w @crm/api && npm run build -w @crm/web",
+    "build:shared": "npm run build -w @crm/shared",
+    "dev": "npm run build:shared && concurrently -k -n shared,api,worker,web -c gray,cyan,magenta,green \"npm:dev:shared\" \"npm:dev:api\" \"npm:dev:worker\" \"npm:dev:web\"",
+    "dev:shared": "npm run dev -w @crm/shared",
+    "dev:api": "npm run dev -w @crm/api",
+    "dev:worker": "npm run dev:worker -w @crm/api",
+    "dev:web": "npm run dev -w @crm/web",
+    "start:api": "npm run start -w @crm/api",
+    "start:worker": "npm run start:worker -w @crm/api",
+    "start:web": "npm run start -w @crm/web",
+    "db:migrate": "npm run db:migrate -w @crm/api",
+    "db:deploy": "npm run db:deploy -w @crm/api",
+    "db:seed": "npm run db:seed -w @crm/api",
+    "bootstrap:admin": "npm run bootstrap:admin -w @crm/api --",
+    "typecheck": "npm run typecheck -w @crm/shared && npm run typecheck -w @crm/api && npm run typecheck -w @crm/web",
+    "lint": "npm run lint -w @crm/web",
+    "test": "npm run test -w @crm/shared && npm run test:unit -w @crm/api && npm run test:int -w @crm/api",
+    "test:unit": "npm run test -w @crm/shared && npm run test:unit -w @crm/api",
+    "test:int": "npm run test:int -w @crm/api",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.20.5",
+    "concurrently": "9.2.1",
+    "typescript": "5.9.3"
+  }
+}

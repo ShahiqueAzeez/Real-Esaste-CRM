@@ -1,0 +1,1086 @@
+// Calling CRM data model. All timestamps are UTC (timestamptz). Money is stored in integer minor
+// units (paise for INR) with an explicit currency. Every tenant-owned table carries tenantId and
+// is guarded by the tenant-scope Prisma extension (src/infra/prisma/tenant-guard.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── enums ─────────────────────────────
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MembershipRole {
+  ORG_ADMIN
+  SUPERVISOR
+  AGENT
+}
+
+enum MembershipStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+enum AgentStatus {
+  OFFLINE
+  READY
+  DIALING
+  ON_CALL
+  WRAP_UP
+  PAUSED
+}
+
+enum CallingMode {
+  BROWSER
+  PHONE
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  INTERESTED
+  FOLLOW_UP
+  CALLBACK
+  NOT_INTERESTED
+  CONVERTED
+  INVALID
+  DO_NOT_CALL
+  CLOSED
+}
+
+enum LeadPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum ConsentStatus {
+  UNKNOWN
+  GRANTED
+  REVOKED
+}
+
+enum SuppressionChannel {
+  ALL
+  VOICE
+  WHATSAPP
+}
+
+enum SuppressionReason {
+  DO_NOT_CALL
+  OPT_OUT
+  WRONG_NUMBER
+  INVALID_NUMBER
+  REGULATORY
+  MANUAL
+}
+
+enum ImportStatus {
+  UPLOADED
+  VALIDATING
+  PREVIEW_READY
+  IMPORTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum QueueItemState {
+  WAITING
+  IN_PROGRESS
+  DONE
+  REMOVED
+}
+
+enum CallStatus {
+  INITIATING
+  AGENT_RINGING
+  AGENT_CONNECTED
+  CUSTOMER_RINGING
+  CONNECTED
+  COMPLETED
+  BUSY
+  NO_ANSWER
+  FAILED
+  CANCELLED
+}
+
+enum LegRole {
+  AGENT
+  CUSTOMER
+  SUPERVISOR
+}
+
+enum LegStatus {
+  QUEUED
+  INITIATED
+  RINGING
+  ANSWERED
+  COMPLETED
+  BUSY
+  NO_ANSWER
+  FAILED
+  CANCELLED
+}
+
+enum TelephonyProviderKind {
+  PLIVO
+  MOCK
+}
+
+enum WrapUpStatus {
+  NOT_REQUIRED
+  PENDING
+  DONE
+  RECOVERED
+}
+
+enum CostSource {
+  PROVIDER
+  ESTIMATE
+  NONE
+}
+
+enum CallbackStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  MISSED
+}
+
+enum RecordingStatus {
+  PENDING
+  AVAILABLE
+  FAILED
+  DELETED
+}
+
+enum WaDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum WaStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  RECEIVED
+  SKIPPED
+}
+
+enum WaPurpose {
+  CALLBACK_CONFIRMATION
+  MISSED_CALL_FOLLOWUP
+  MANUAL
+}
+
+enum ProviderType {
+  PLIVO
+  WHATSAPP
+}
+
+enum IntegrationStatus {
+  NOT_CONFIGURED
+  CONFIGURED
+  ERROR
+  DISABLED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum BillingPeriod {
+  MONTHLY
+  ANNUAL
+}
+
+enum LedgerEntryType {
+  CHARGE
+  PAYMENT
+  CREDIT
+  ADJUSTMENT
+}
+
+enum UsageKind {
+  VOICE_LEG_SECONDS
+  VOICE_COST
+  WHATSAPP_MESSAGE
+  LEAD_IMPORT
+  RECORDING_SECONDS
+}
+
+enum OutcomeCategory {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  CONVERTED
+  NO_CONTACT
+  INVALID
+  DO_NOT_CALL
+}
+
+enum RetryBehavior {
+  NONE
+  RETRY
+  CALLBACK
+}
+
+enum AuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  FAILED
+  LOGGED
+}
+
+// ───────────────────────────── platform & identity ─────────────────────────────
+
+model Tenant {
+  id              String       @id @default(uuid()) @db.Uuid
+  name            String
+  slug            String       @unique
+  status          TenantStatus @default(ACTIVE)
+  suspendedReason String?
+  timezone        String       @default("Asia/Kolkata")
+  /// Validated with tenantSettingsSchema from @crm/shared.
+  settings        Json         @default("{}")
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
+
+  memberships     Membership[]
+  teams           Team[]
+  invitations     Invitation[]
+  leads           Lead[]
+  queues          Queue[]
+  calls           Call[]
+  subscription    Subscription?
+  providerConfigs ProviderConfig[]
+
+  @@map("tenants")
+}
+
+model User {
+  id               String    @id @default(uuid()) @db.Uuid
+  email            String    @unique
+  name             String
+  passwordHash     String?
+  emailVerifiedAt  DateTime? @db.Timestamptz(3)
+  isPlatformAdmin  Boolean   @default(false)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime? @db.Timestamptz(3)
+  lastLoginAt      DateTime? @db.Timestamptz(3)
+  timezone         String?
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  memberships Membership[]
+  sessions    Session[]
+  authTokens  AuthToken[]
+
+  @@map("users")
+}
+
+model Membership {
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @db.Uuid
+  userId            String           @db.Uuid
+  role              MembershipRole
+  status            MembershipStatus @default(ACTIVE)
+  /// Extra permissions granted on top of the role (supervisors only; see GRANTABLE_EXTRA_PERMISSIONS).
+  extraPermissions  String[]         @default([])
+  teamId            String?          @db.Uuid
+  /// Null means "use the tenant default".
+  callingMode       CallingMode?
+  agentPhoneE164    String?
+  /// Identity used for the Plivo browser registration (JWT sub) and SIP URI.
+  telephonyIdentity String           @unique
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team         Team?            @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
+  supervises   TeamSupervisor[]
+  agentState   AgentState?
+  queueMembers QueueMember[]
+  sessions     Session[]
+
+  @@unique([tenantId, userId])
+  @@index([tenantId, role, status])
+  @@map("memberships")
+}
+
+model Team {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members     Membership[]     @relation("TeamMembers")
+  supervisors TeamSupervisor[]
+
+  @@unique([tenantId, name])
+  @@map("teams")
+}
+
+model TeamSupervisor {
+  tenantId     String @db.Uuid
+  teamId       String @db.Uuid
+  membershipId String @db.Uuid
+
+  team       Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, membershipId])
+  @@index([tenantId, membershipId])
+  @@map("team_supervisors")
+}
+
+model Session {
+  id            String    @id @default(uuid()) @db.Uuid
+  tokenHash     String    @unique
+  csrfTokenHash String
+  userId        String    @db.Uuid
+  /// Active membership (tenant) for this session. Null for platform-only sessions.
+  membershipId  String?   @db.Uuid
+  ip            String?
+  userAgent     String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt    DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt     DateTime  @db.Timestamptz(3)
+  revokedAt     DateTime? @db.Timestamptz(3)
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membership Membership? @relation(fields: [membershipId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Invitation {
+  id                  String         @id @default(uuid()) @db.Uuid
+  tenantId            String         @db.Uuid
+  email               String
+  role                MembershipRole
+  teamId              String?        @db.Uuid
+  tokenHash           String         @unique
+  expiresAt           DateTime       @db.Timestamptz(3)
+  acceptedAt          DateTime?      @db.Timestamptz(3)
+  revokedAt           DateTime?      @db.Timestamptz(3)
+  invitedByMembership String?        @db.Uuid
+  createdAt           DateTime       @default(now()) @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, email])
+  @@map("invitations")
+}
+
+model AuthToken {
+  id        String        @id @default(uuid()) @db.Uuid
+  userId    String        @db.Uuid
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime      @db.Timestamptz(3)
+  usedAt    DateTime?     @db.Timestamptz(3)
+  createdAt DateTime      @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("auth_tokens")
+}
+
+model EmailOutbox {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String?     @db.Uuid
+  toAddress String
+  subject   String
+  textBody  String
+  status    EmailStatus @default(QUEUED)
+  error     String?
+  createdAt DateTime    @default(now()) @db.Timestamptz(3)
+  sentAt    DateTime?   @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@map("email_outbox")
+}
+
+// ───────────────────────────── agents ─────────────────────────────
+
+model AgentState {
+  membershipId       String      @id @db.Uuid
+  tenantId           String      @db.Uuid
+  status             AgentStatus @default(OFFLINE)
+  pauseReason        String?
+  currentCallId      String?     @unique @db.Uuid
+  statusChangedAt    DateTime    @default(now()) @db.Timestamptz(3)
+  lastHeartbeatAt    DateTime?   @db.Timestamptz(3)
+  microphone         String?
+  providerRegistered Boolean     @default(false)
+  deviceCheckedAt    DateTime?   @db.Timestamptz(3)
+  version            Int         @default(0)
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@map("agent_states")
+}
+
+model AgentStatusHistory {
+  id           String      @id @default(uuid()) @db.Uuid
+  tenantId     String      @db.Uuid
+  membershipId String      @db.Uuid
+  status       AgentStatus
+  reason       String?
+  startedAt    DateTime    @default(now()) @db.Timestamptz(3)
+  endedAt      DateTime?   @db.Timestamptz(3)
+
+  @@index([tenantId, membershipId, startedAt])
+  @@index([tenantId, startedAt])
+  @@map("agent_status_history")
+}
+
+// ───────────────────────────── leads & compliance ─────────────────────────────
+
+model Lead {
+  id                   String        @id @default(uuid()) @db.Uuid
+  tenantId             String        @db.Uuid
+  fullName             String
+  phoneE164            String
+  email                String?
+  propertyInterest     String?
+  preferredLocation    String?
+  /// Whole rupees (or tenant currency units). Budgets, not money movements.
+  budgetMin            BigInt?
+  budgetMax            BigInt?
+  source               String?
+  status               LeadStatus    @default(NEW)
+  priority             LeadPriority  @default(NORMAL)
+  consentStatus        ConsentStatus @default(UNKNOWN)
+  consentSource        String?
+  consentCapturedAt    DateTime?     @db.Timestamptz(3)
+  consentEvidence      String?
+  assignedMembershipId String?       @db.Uuid
+  lastCallAt           DateTime?     @db.Timestamptz(3)
+  lastCallOutcome      String?
+  nextCallbackAt       DateTime?     @db.Timestamptz(3)
+  attemptCount         Int           @default(0)
+  importJobId          String?       @db.Uuid
+  createdAt            DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime      @updatedAt @db.Timestamptz(3)
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  queueItem QueueItem?
+  calls     Call[]
+  notes     LeadNote[]
+  activity  LeadActivity[]
+  callbacks Callback[]
+
+  @@unique([tenantId, phoneE164])
+  @@index([tenantId, status])
+  @@index([tenantId, assignedMembershipId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, nextCallbackAt])
+  @@index([tenantId, lastCallAt])
+  @@map("leads")
+}
+
+model LeadNote {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @db.Uuid
+  leadId             String   @db.Uuid
+  authorMembershipId String?  @db.Uuid
+  callId             String?  @db.Uuid
+  body               String
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId, createdAt])
+  @@map("lead_notes")
+}
+
+/// Append-only lead timeline: imports, assignments, queue decisions, calls, outcomes, consent changes.
+model LeadActivity {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @db.Uuid
+  leadId            String   @db.Uuid
+  type              String
+  actorMembershipId String?  @db.Uuid
+  data              Json?
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId, createdAt])
+  @@map("lead_activity")
+}
+
+model LeadAssignment {
+  id                     String   @id @default(uuid()) @db.Uuid
+  tenantId               String   @db.Uuid
+  leadId                 String   @db.Uuid
+  fromMembershipId       String?  @db.Uuid
+  toMembershipId         String?  @db.Uuid
+  assignedByMembershipId String?  @db.Uuid
+  reason                 String
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([tenantId, leadId, createdAt])
+  @@map("lead_assignments")
+}
+
+/// Evidence trail for contact permission. The lead row holds the current state; this keeps history.
+model ConsentRecord {
+  id                     String             @id @default(uuid()) @db.Uuid
+  tenantId               String             @db.Uuid
+  leadId                 String?            @db.Uuid
+  phoneE164              String
+  channel                SuppressionChannel @default(ALL)
+  status                 ConsentStatus
+  source                 String
+  evidence               String?
+  capturedAt             DateTime?          @db.Timestamptz(3)
+  recordedByMembershipId String?            @db.Uuid
+  createdAt              DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@index([tenantId, phoneE164])
+  @@index([tenantId, leadId])
+  @@map("consent_records")
+}
+
+model SuppressionEntry {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String             @db.Uuid
+  phoneE164             String
+  channel               SuppressionChannel
+  reason                SuppressionReason
+  note                  String?
+  source                String?
+  createdByMembershipId String?            @db.Uuid
+  expiresAt             DateTime?          @db.Timestamptz(3)
+  createdAt             DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@unique([tenantId, phoneE164, channel])
+  @@index([tenantId, createdAt])
+  @@map("suppression_entries")
+}
+
+model LeadImportJob {
+  id                    String       @id @default(uuid()) @db.Uuid
+  tenantId              String       @db.Uuid
+  fileName              String
+  storageKey            String
+  fileSize              Int
+  status                ImportStatus @default(UPLOADED)
+  headers               Json?
+  sampleRows            Json?
+  mapping               Json?
+  options               Json?
+  totalRows             Int          @default(0)
+  validRows             Int          @default(0)
+  invalidRows           Int          @default(0)
+  duplicateRows         Int          @default(0)
+  suppressedRows        Int          @default(0)
+  existingRows          Int          @default(0)
+  importedRows          Int          @default(0)
+  updatedRows           Int          @default(0)
+  skippedRows           Int          @default(0)
+  processedRows         Int          @default(0)
+  /// First 500 row-level problems: [{ row, errors: string[] }]. Full report downloadable as CSV.
+  errorSample           Json?
+  previewRows           Json?
+  failureReason         String?
+  createdByMembershipId String       @db.Uuid
+  createdAt             DateTime     @default(now()) @db.Timestamptz(3)
+  validatedAt           DateTime?    @db.Timestamptz(3)
+  startedAt             DateTime?    @db.Timestamptz(3)
+  completedAt           DateTime?    @db.Timestamptz(3)
+
+  @@index([tenantId, createdAt])
+  @@map("lead_import_jobs")
+}
+
+// ───────────────────────────── queues ─────────────────────────────
+
+model Queue {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  name        String
+  description String?
+  isDefault   Boolean  @default(false)
+  active      Boolean  @default(true)
+  /// Optional caller ID override (must be one of the tenant's provider numbers).
+  callerId    String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items   QueueItem[]
+  members QueueMember[]
+
+  @@unique([tenantId, name])
+  @@map("queues")
+}
+
+model QueueMember {
+  tenantId     String @db.Uuid
+  queueId      String @db.Uuid
+  membershipId String @db.Uuid
+
+  queue      Queue      @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@id([queueId, membershipId])
+  @@index([tenantId, membershipId])
+  @@map("queue_members")
+}
+
+/// The dialling state of one lead. One row per lead (unique leadId), reused across attempts.
+model QueueItem {
+  id                     String         @id @default(uuid()) @db.Uuid
+  tenantId               String         @db.Uuid
+  queueId                String         @db.Uuid
+  leadId                 String         @unique @db.Uuid
+  state                  QueueItemState @default(WAITING)
+  priority               Int            @default(10)
+  availableAt            DateTime       @default(now()) @db.Timestamptz(3)
+  attempts               Int            @default(0)
+  lastAttemptAt          DateTime?      @db.Timestamptz(3)
+  /// Agent affinity: only this agent may dial the item (lead owner or callback assignee).
+  assignedMembershipId   String?        @db.Uuid
+  isCallback             Boolean        @default(false)
+  callbackId             String?        @db.Uuid
+  reservedByMembershipId String?        @db.Uuid
+  reservedAt             DateTime?      @db.Timestamptz(3)
+  doneReason             String?
+  createdAt              DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime       @updatedAt @db.Timestamptz(3)
+
+  queue Queue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  lead  Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, state, availableAt])
+  @@index([tenantId, queueId, state])
+  @@index([tenantId, assignedMembershipId, state])
+  @@map("queue_items")
+}
+
+// ───────────────────────────── calls ─────────────────────────────
+
+/// One outbound call attempt (agent leg + customer leg + optional supervisor legs).
+model Call {
+  id                 String                @id @default(uuid()) @db.Uuid
+  tenantId           String                @db.Uuid
+  leadId             String                @db.Uuid
+  membershipId       String                @db.Uuid
+  queueId            String?               @db.Uuid
+  queueItemId        String?               @db.Uuid
+  provider           TelephonyProviderKind
+  isSimulated        Boolean               @default(false)
+  callingMode        CallingMode
+  status             CallStatus            @default(INITIATING)
+  statusChangedAt    DateTime              @default(now()) @db.Timestamptz(3)
+  fromNumber         String?
+  toNumberE164       String
+  idempotencyKey     String?               @unique
+  attemptNumber      Int                   @default(0)
+  countedAsAttempt   Boolean               @default(false)
+  recordingEnabled   Boolean               @default(false)
+  initiatedAt        DateTime              @default(now()) @db.Timestamptz(3)
+  agentAnsweredAt    DateTime?             @db.Timestamptz(3)
+  customerRingingAt  DateTime?             @db.Timestamptz(3)
+  customerAnsweredAt DateTime?             @db.Timestamptz(3)
+  endedAt            DateTime?             @db.Timestamptz(3)
+  /// Seconds between customer answer and end (talk time). Null if never connected.
+  talkSeconds        Int?
+  /// Sum of provider-billed seconds over all legs, when reported.
+  billableSeconds    Int?
+  /// Provider or estimated cost in micro-units (1/1,000,000) of costCurrency; telephony rates are fractions of a cent.
+  costMicros         BigInt?
+  costCurrency       String?
+  costSource         CostSource            @default(NONE)
+  failureReason      String?
+  hangupCause        String?
+  hangupSource       String?
+  wrapUpStatus       WrapUpStatus          @default(PENDING)
+  lastEventAt        DateTime?             @db.Timestamptz(3)
+  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime              @updatedAt @db.Timestamptz(3)
+
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead       Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  legs       CallLeg[]
+  events     CallEvent[]
+  outcome    CallOutcome?
+  recordings Recording[]
+
+  @@index([tenantId, initiatedAt])
+  @@index([tenantId, membershipId, initiatedAt])
+  @@index([tenantId, status])
+  @@index([tenantId, leadId])
+  @@index([status, lastEventAt])
+  @@map("calls")
+}
+
+model CallLeg {
+  id                     String                @id @default(uuid()) @db.Uuid
+  tenantId               String                @db.Uuid
+  callId                 String                @db.Uuid
+  role                   LegRole
+  status                 LegStatus             @default(QUEUED)
+  provider               TelephonyProviderKind
+  providerRequestId      String?
+  providerCallId         String?
+  toAddress              String
+  fromNumber             String?
+  supervisorMembershipId String?               @db.Uuid
+  coachMode              Boolean?
+  everAnswered           Boolean               @default(false)
+  initiatedAt            DateTime?             @db.Timestamptz(3)
+  ringingAt              DateTime?             @db.Timestamptz(3)
+  answeredAt             DateTime?             @db.Timestamptz(3)
+  endedAt                DateTime?             @db.Timestamptz(3)
+  durationSeconds        Int?
+  billSeconds            Int?
+  costMicros             BigInt?
+  costCurrency           String?
+  costSource             CostSource            @default(NONE)
+  hangupCause            String?
+  hangupCauseCode        String?
+  hangupSource           String?
+  createdAt              DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime              @updatedAt @db.Timestamptz(3)
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerRequestId])
+  @@unique([provider, providerCallId])
+  @@index([tenantId, callId])
+  @@map("call_legs")
+}
+
+/// Every provider callback and simulator event, stored once (unique dedupe key) before processing.
+model CallEvent {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @db.Uuid
+  callId          String?               @db.Uuid
+  legId           String?               @db.Uuid
+  provider        TelephonyProviderKind
+  source          String
+  type            String
+  dedupeKey       String
+  signatureValid  Boolean?
+  payload         Json
+  occurredAt      DateTime              @db.Timestamptz(3)
+  receivedAt      DateTime              @default(now()) @db.Timestamptz(3)
+  processedAt     DateTime?             @db.Timestamptz(3)
+  processingError String?
+  attempts        Int                   @default(0)
+
+  call Call? @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, dedupeKey])
+  @@index([tenantId, callId, occurredAt])
+  @@index([processedAt, receivedAt])
+  @@map("call_events")
+}
+
+model OutcomeDefinition {
+  id               String             @id @default(uuid()) @db.Uuid
+  tenantId         String             @db.Uuid
+  code             String
+  label            String
+  category         OutcomeCategory
+  leadStatus       LeadStatus?
+  requiresNotes    Boolean            @default(false)
+  requiresCallback Boolean            @default(false)
+  retryBehavior    RetryBehavior      @default(NONE)
+  suppressReason   SuppressionReason?
+  isFinal          Boolean            @default(false)
+  selectable       Boolean            @default(true)
+  isSystem         Boolean            @default(false)
+  active           Boolean            @default(true)
+  sortOrder        Int                @default(500)
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@unique([tenantId, code])
+  @@map("outcome_definitions")
+}
+
+model CallOutcome {
+  id           String          @id @default(uuid()) @db.Uuid
+  tenantId     String          @db.Uuid
+  callId       String          @unique @db.Uuid
+  leadId       String          @db.Uuid
+  membershipId String          @db.Uuid
+  outcomeCode  String
+  outcomeLabel String
+  category     OutcomeCategory
+  notes        String?
+  callbackAt   DateTime?       @db.Timestamptz(3)
+  /// Set when recorded by the system (auto wrap-up) or by a supervisor recovery.
+  recordedBy   String          @default("AGENT")
+  createdAt    DateTime        @default(now()) @db.Timestamptz(3)
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, outcomeCode, createdAt])
+  @@map("call_outcomes")
+}
+
+model Callback {
+  id                    String         @id @default(uuid()) @db.Uuid
+  tenantId              String         @db.Uuid
+  leadId                String         @db.Uuid
+  sourceCallId          String?        @db.Uuid
+  assignedMembershipId  String?        @db.Uuid
+  createdByMembershipId String?        @db.Uuid
+  dueAt                 DateTime       @db.Timestamptz(3)
+  status                CallbackStatus @default(PENDING)
+  notes                 String?
+  reminderSentAt        DateTime?      @db.Timestamptz(3)
+  completedAt           DateTime?      @db.Timestamptz(3)
+  completedCallId       String?        @db.Uuid
+  createdAt             DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime       @updatedAt @db.Timestamptz(3)
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, assignedMembershipId, status, dueAt])
+  @@map("callbacks")
+}
+
+model Recording {
+  id                    String                @id @default(uuid()) @db.Uuid
+  tenantId              String                @db.Uuid
+  callId                String                @db.Uuid
+  provider              TelephonyProviderKind
+  providerRecordingId   String
+  status                RecordingStatus       @default(PENDING)
+  durationSeconds       Int?
+  format                String?
+  /// Provider media URL. Server-side only; never serialized to clients.
+  providerUrl           String?
+  retentionUntil        DateTime?             @db.Timestamptz(3)
+  deletedAt             DateTime?             @db.Timestamptz(3)
+  deletedByMembershipId String?               @db.Uuid
+  createdAt             DateTime              @default(now()) @db.Timestamptz(3)
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerRecordingId])
+  @@index([tenantId, callId])
+  @@index([tenantId, retentionUntil])
+  @@map("recordings")
+}
+
+// ───────────────────────────── messaging ─────────────────────────────
+
+model WhatsAppTemplate {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  name      String
+  language  String
+  purpose   WaPurpose
+  category  String
+  variables Json      @default("[]")
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([tenantId, name, language])
+  @@map("whatsapp_templates")
+}
+
+model WhatsAppMessage {
+  id                    String      @id @default(uuid()) @db.Uuid
+  tenantId              String      @db.Uuid
+  leadId                String?     @db.Uuid
+  phoneE164             String
+  direction             WaDirection
+  purpose               WaPurpose?
+  templateId            String?     @db.Uuid
+  templateName          String?
+  body                  String?
+  status                WaStatus    @default(QUEUED)
+  providerMessageId     String?     @unique
+  errorCode             String?
+  errorMessage          String?
+  isSimulated           Boolean     @default(false)
+  attempts              Int         @default(0)
+  createdByMembershipId String?     @db.Uuid
+  sentAt                DateTime?   @db.Timestamptz(3)
+  deliveredAt           DateTime?   @db.Timestamptz(3)
+  readAt                DateTime?   @db.Timestamptz(3)
+  failedAt              DateTime?   @db.Timestamptz(3)
+  createdAt             DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime    @updatedAt @db.Timestamptz(3)
+
+  @@index([tenantId, phoneE164, createdAt])
+  @@index([tenantId, leadId, createdAt])
+  @@map("whatsapp_messages")
+}
+
+// ───────────────────────────── integrations, billing, audit ─────────────────────────────
+
+model ProviderConfig {
+  id                    String            @id @default(uuid()) @db.Uuid
+  tenantId              String            @db.Uuid
+  provider              ProviderType
+  enabled               Boolean           @default(true)
+  status                IntegrationStatus @default(NOT_CONFIGURED)
+  /// Non-secret settings (caller IDs, phone number id, API version).
+  config                Json              @default("{}")
+  /// AES-256-GCM encrypted JSON of secrets (auth token, access token, app secret).
+  secretsEncrypted      String?
+  lastCheckedAt         DateTime?         @db.Timestamptz(3)
+  lastError             String?
+  updatedByMembershipId String?           @db.Uuid
+  createdAt             DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime          @updatedAt @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider])
+  @@map("provider_configs")
+}
+
+model Plan {
+  id                     String   @id @default(uuid()) @db.Uuid
+  code                   String   @unique
+  name                   String
+  description            String?
+  monthlyPriceMinor      BigInt
+  annualPriceMinor       BigInt
+  currency               String   @default("INR")
+  maxAgents              Int
+  maxLeadImportsPerMonth Int
+  maxConcurrentCalls     Int
+  features               Json     @default("{}")
+  active                 Boolean  @default(true)
+  sortOrder              Int      @default(0)
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(3)
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  tenantId           String             @unique @db.Uuid
+  planId             String             @db.Uuid
+  status             SubscriptionStatus @default(TRIALING)
+  billingPeriod      BillingPeriod      @default(MONTHLY)
+  currentPeriodStart DateTime           @db.Timestamptz(3)
+  currentPeriodEnd   DateTime           @db.Timestamptz(3)
+  trialEndsAt        DateTime?          @db.Timestamptz(3)
+  graceDays          Int                @default(7)
+  /// MANUAL (payments recorded by the platform team) or SIMULATED (development only).
+  paymentMode        String             @default("MANUAL")
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  @@map("subscriptions")
+}
+
+model BillingLedgerEntry {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @db.Uuid
+  type            LedgerEntryType
+  amountMinor     BigInt
+  currency        String          @default("INR")
+  description     String
+  reference       String?
+  periodStart     DateTime?       @db.Timestamptz(3)
+  periodEnd       DateTime?       @db.Timestamptz(3)
+  isSimulated     Boolean         @default(false)
+  createdByUserId String?         @db.Uuid
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@index([tenantId, createdAt])
+  @@map("billing_ledger_entries")
+}
+
+model UsageLedgerEntry {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  kind         UsageKind
+  quantity     BigInt
+  /// Cost in micro-units (1/1,000,000) of currency.
+  amountMicros BigInt?
+  currency     String?
+  isEstimate   Boolean   @default(false)
+  sourceType   String
+  sourceId     String
+  occurredAt   DateTime  @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@unique([kind, sourceType, sourceId])
+  @@index([tenantId, kind, occurredAt])
+  @@map("usage_ledger_entries")
+}
+
+model AuditLog {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String?  @db.Uuid
+  actorUserId       String?  @db.Uuid
+  actorMembershipId String?  @db.Uuid
+  action            String
+  entityType        String?
+  entityId          String?
+  metadata          Json?
+  ip                String?
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action, createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  membershipId String    @db.Uuid
+  type         String
+  title        String
+  body         String?
+  data         Json?
+  readAt       DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([tenantId, membershipId, readAt, createdAt])
+  @@map("notifications")
+}
