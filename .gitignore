@@ -7,7 +7,9 @@ coverage/
 .env
 .env.*
 !.env.example
-storage/
+# Runtime data only (anchored: src/infra/storage is source code).
+/storage/
+/apps/api/storage/
 playwright-report/
 test-results/
 *.tsbuildinfo
