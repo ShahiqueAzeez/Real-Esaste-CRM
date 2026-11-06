@@ -73,6 +73,11 @@ export function loadDotEnv(): void {
   }
 }
 
+function isLoopbackUrl(url: string): boolean {
+  const host = new URL(url).hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
 export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const result = envSchema.safeParse(source);
   if (!result.success) {
@@ -81,7 +86,11 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   const env = result.data;
   if (env.NODE_ENV === 'production') {
-    if (!env.PUBLIC_BASE_URL.startsWith('https://')) throw new Error('PUBLIC_BASE_URL must use https in production');
+    // Plain http is tolerated only on a loopback host (evaluating the containers on one machine):
+    // browsers treat http://localhost as a secure context, and nothing outside the host can reach it.
+    if (!env.PUBLIC_BASE_URL.startsWith('https://') && !isLoopbackUrl(env.PUBLIC_BASE_URL)) {
+      throw new Error('PUBLIC_BASE_URL must use https in production (plain http is accepted only for localhost)');
+    }
     if (!env.COOKIE_SECURE) throw new Error('COOKIE_SECURE must be true in production');
   }
   if (env.STORAGE_DRIVER === 's3' && !env.S3_BUCKET) throw new Error('S3_BUCKET is required when STORAGE_DRIVER=s3');

@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { Providers } from '@/lib/providers';
+import { PRODUCT_NAME } from '@/lib/utils';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: process.env.NEXT_PUBLIC_PRODUCT_NAME ?? 'Calling CRM', template: `%s · ${process.env.NEXT_PUBLIC_PRODUCT_NAME ?? 'Calling CRM'}` },
+  title: { default: PRODUCT_NAME, template: `%s · ${PRODUCT_NAME}` },
   description: 'Outbound calling CRM for real estate teams',
   robots: { index: false, follow: false },
 };

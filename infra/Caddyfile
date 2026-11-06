@@ -1,0 +1,44 @@
+# Edge proxy for the calling CRM.
+#
+# SITE_ADDRESS picks the mode:
+#   :80               plain HTTP for any host name. Local evaluation, or behind a load balancer that
+#                     terminates TLS (then also configure trusted_proxies below).
+#   crm.example.com   automatic HTTPS with Let's Encrypt. DNS must point here and ports 80 and 443
+#                     must be published (HTTP_PORT=80, HTTPS_PORT=443).
+#
+# The browser only ever talks to this origin: /api and /socket.io go to the API, everything else
+# to the Next.js server, so session cookies stay first-party.
+{
+	admin off
+	# Behind an ALB or another proxy, trust it so client IPs (rate limits, audit log) stay correct:
+	# servers {
+	#	trusted_proxies static 10.0.0.0/8
+	# }
+}
+
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	# CSV imports are capped by the API (MAX_UPLOAD_MB); this is a coarse outer limit.
+	request_body {
+		max_size 25MB
+	}
+
+	@backend path /api/* /socket.io/*
+	handle @backend {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header -Server
+
+	log {
+		output stdout
+		format json
+	}
+}

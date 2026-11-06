@@ -1,6 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Copy, Plus } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { toast } from 'sonner';
@@ -111,8 +112,18 @@ function CreateTenant({ onClose, onLink }: { onClose: () => void; onLink: (l: st
     },
     onError: (e) => toast.error(errorMessage(e)),
   });
+  const noPlans = plans.isSuccess && !plans.data.some((p) => p.active);
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title="New organisation" description="Creates the organisation, default outcomes and queue, a subscription, and an invitation for its first administrator." footer={<Button loading={create.isPending} disabled={!v.name || !v.slug || !v.adminEmail} onClick={() => create.mutate()}>Create</Button>}>
+    <Dialog open onOpenChange={(o) => !o && onClose()} title="New organisation" description="Creates the organisation, default outcomes and queue, a subscription, and an invitation for its first administrator." footer={<Button loading={create.isPending} disabled={noPlans || !v.name || !v.slug || !v.adminEmail} onClick={() => create.mutate()}>Create</Button>}>
+      {noPlans && (
+        <Alert tone="warn" title="No active plans" className="mb-4">
+          Every organisation needs a subscription plan.{' '}
+          <Link href="/platform/plans" className="font-medium text-brand underline">
+            Create a plan
+          </Link>{' '}
+          first, or add the example plans with the bootstrap command&apos;s <code>--with-example-plans</code> option.
+        </Alert>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name" htmlFor="tn">
           <Input id="tn" value={v.name} onChange={(e) => setV((x) => ({ ...x, name: e.target.value, slug: x.slug || e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) }))} />

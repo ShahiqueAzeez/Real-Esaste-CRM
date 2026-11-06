@@ -68,7 +68,7 @@ export class TelephonyRegistry {
       const cached = this.cache.get('__platform');
       const provider =
         cached?.provider ??
-        new PlivoProvider({ authId: e.PLIVO_AUTH_ID!, authToken: e.PLIVO_AUTH_TOKEN! }, this.plivoSettings(e.PLIVO_CALLER_ID ? [e.PLIVO_CALLER_ID] : [], e.PLIVO_CALLER_ID ?? null, 'USD'));
+        new PlivoProvider({ authId: e.PLIVO_AUTH_ID!, authToken: e.PLIVO_AUTH_TOKEN! }, this.plivoSettings(e.PLIVO_CALLER_ID ? [e.PLIVO_CALLER_ID] : [], e.PLIVO_CALLER_ID || null, 'USD'));
       this.cache.set('__platform', { key: 'platform', provider, source: 'platform', at: Date.now() });
       return { provider, source: 'platform', authTokens: [e.PLIVO_AUTH_TOKEN!] };
     }

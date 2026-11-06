@@ -16,6 +16,7 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "db:seed:prod": "node dist/scripts/seed.js",
     "bootstrap:admin": "tsx src/scripts/bootstrap-admin.ts",
+    "db:example-plans": "tsx src/scripts/example-plans.ts",
     "test": "npm run test:unit && npm run test:int",
     "test:unit": "jest -c jest.unit.config.js",
     "test:int": "jest -c jest.int.config.js --runInBand"
@@ -44,6 +45,7 @@
     "pino": "9.14.0",
     "pino-http": "10.5.0",
     "plivo": "4.79.0",
+    "prisma": "6.19.3",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "socket.io": "4.8.4",
@@ -60,7 +62,6 @@
     "@types/supertest": "6.0.3",
     "jest": "30.5.2",
     "pino-pretty": "13.2.0",
-    "prisma": "6.19.3",
     "socket.io-client": "4.8.4",
     "supertest": "7.3.1",
     "ts-jest": "29.4.15",

@@ -12,12 +12,8 @@ import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { SYNTHETIC_SOURCE } from '../common/constants';
 import { addMembershipRecords, createTenantRecords } from '../modules/tenancy/provisioning';
+import { ensureExamplePlans } from './example-plans';
 
-const PLANS = [
-  { code: 'starter', name: 'Starter', monthly: 7_999_00n, annual: 79_990_00n, maxAgents: 5, imports: 10_000, concurrent: 5, features: { recording: false, whatsapp: false, coaching: false, advancedReports: false }, sortOrder: 1 },
-  { code: 'professional', name: 'Professional', monthly: 14_999_00n, annual: 149_990_00n, maxAgents: 15, imports: 50_000, concurrent: 15, features: { recording: true, whatsapp: true, coaching: true, advancedReports: false }, sortOrder: 2 },
-  { code: 'business', name: 'Business', monthly: 24_999_00n, annual: 249_990_00n, maxAgents: 40, imports: 200_000, concurrent: 40, features: { recording: true, whatsapp: true, coaching: true, advancedReports: true }, sortOrder: 3 },
-];
 
 const FIRST = ['Arun', 'Priya', 'Karthik', 'Divya', 'Suresh', 'Lakshmi', 'Vignesh', 'Meena', 'Rajesh', 'Anitha', 'Prakash', 'Revathi', 'Senthil', 'Kavya', 'Bala', 'Nandhini', 'Ganesh', 'Sowmya', 'Hari', 'Deepa'];
 const LAST = ['Kumar', 'Raman', 'Subramanian', 'Iyer', 'Natarajan', 'Krishnan', 'Venkatesh', 'Murugan', 'Rao', 'Pillai'];
@@ -32,13 +28,7 @@ async function main() {
   const prisma = new PrismaClient();
   const password = process.env.SEED_PASSWORD ?? `Demo-${randomBytes(6).toString('hex')}-1`;
 
-  for (const p of PLANS) {
-    await prisma.plan.upsert({
-      where: { code: p.code },
-      create: { code: p.code, name: p.name, monthlyPriceMinor: p.monthly, annualPriceMinor: p.annual, currency: 'INR', maxAgents: p.maxAgents, maxLeadImportsPerMonth: p.imports, maxConcurrentCalls: p.concurrent, features: p.features, sortOrder: p.sortOrder, description: `Example ${p.name} plan (configurable).` },
-      update: {},
-    });
-  }
+  await ensureExamplePlans(prisma);
 
   if (await prisma.tenant.findUnique({ where: { slug: 'demo-realty' } })) {
     console.log('Demo tenant already exists; plans ensured. Nothing else to do.');

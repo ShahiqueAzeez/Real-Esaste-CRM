@@ -7,11 +7,13 @@
  *
  * The password is read from BOOTSTRAP_ADMIN_PASSWORD or generated and printed once.
  * Refuses to run when a platform admin already exists unless --allow-additional is given.
+ * --with-example-plans also creates the example Starter/Professional/Business plans if missing.
  */
 import { hash } from '@node-rs/argon2';
 import { PrismaClient } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { ensureExamplePlans } from './example-plans';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -22,7 +24,7 @@ async function main() {
   if (existsSync('.env') && typeof process.loadEnvFile === 'function' && process.env.NODE_ENV !== 'production') process.loadEnvFile('.env');
   const email = arg('email')?.trim().toLowerCase();
   const name = arg('name')?.trim() || 'Platform Admin';
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Usage: bootstrap-admin --email <email> [--name "<name>"]');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Usage: bootstrap-admin --email <email> [--name "<name>"] [--with-example-plans] [--allow-additional]');
   const provided = process.env.BOOTSTRAP_ADMIN_PASSWORD;
   if (provided && (provided.length < 12 || !/\d/.test(provided) || !/[A-Za-z]/.test(provided))) {
     throw new Error('BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters with letters and digits');
@@ -41,6 +43,10 @@ async function main() {
     });
     await prisma.auditLog.create({ data: { actorUserId: user.id, action: 'platform.admin_bootstrapped', entityType: 'user', entityId: user.id } });
     console.log(`Platform administrator ready: ${email}`);
+    if (process.argv.includes('--with-example-plans')) {
+      const created = await ensureExamplePlans(prisma);
+      console.log(created.length ? `Example plans created: ${created.join(', ')} (edit them under Platform > Plans)` : 'Example plans already exist; left unchanged.');
+    }
     if (!provided) console.log(`Generated password (shown once, store it in a password manager): ${password}`);
   } finally {
     await prisma.$disconnect();

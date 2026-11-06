@@ -1,11 +1,22 @@
+# Build context hygiene: never send secrets, local data or build output to the Docker daemon.
 **/node_modules
 **/dist
 **/.next
 **/coverage
-.env
-.env.*
+**/*.tsbuildinfo
+**/next-env.d.ts
+**/.env
+**/.env.*
+!**/.env.example
 storage
+apps/api/storage
+**/*.log
 playwright-report
 test-results
 e2e
 docs
+scripts
+infra
+docker-compose*.yml
+**/Dockerfile
+.dockerignore
