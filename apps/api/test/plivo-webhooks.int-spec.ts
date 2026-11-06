@@ -3,7 +3,7 @@ import type { Queue } from 'bullmq';
 import { createHmac, randomBytes } from 'node:crypto';
 import supertest from 'supertest';
 import { CryptoService } from '../src/infra/crypto/crypto.service';
-import { addLeads, createOrg, startApp, waitFor, type Org, type TestApp } from './helpers';
+import { addLeads, Client, createOrg, startApp, waitFor, type Org, type TestApp } from './helpers';
 import { TEST_ENV } from './setup/test-env';
 
 const AUTH_TOKEN = 'plivo-test-auth-token-0123456789';
@@ -130,5 +130,17 @@ describe('Plivo webhooks', () => {
     expect((await hook('ring', { ...a, role: 'customer' }, { CallUUID: 'x', CallStatus: 'ringing' })).status).toBe(404);
     expect((await hook('ring', { ...a, legId: '00000000-0000-4000-8000-000000000000' }, { CallUUID: 'x', CallStatus: 'ringing' })).status).toBe(404);
     expect((await t.prisma.callLeg.findUniqueOrThrow({ where: { id: agentLeg.id } })).status).toBe('INITIATED');
+  });
+
+  it('only accepts queue caller IDs that are on the Plivo account', async () => {
+    const admin = new Client(t.app);
+    await admin.login(org.admin.email);
+    const base = { name: `Caller ID check ${Date.now()}`, description: null, active: true, memberIds: [] };
+    const rejected = await admin.post('/api/queues', { ...base, callerId: '+919876543210' });
+    expect(rejected.status).toBe(400);
+    expect(JSON.stringify(rejected.body)).toContain('+914412345678');
+    const saved = await admin.post('/api/queues', { ...base, callerId: '+91 44 1234 5678' });
+    expect(saved.status).toBe(201);
+    expect(saved.body.callerId).toBe('+914412345678');
   });
 });

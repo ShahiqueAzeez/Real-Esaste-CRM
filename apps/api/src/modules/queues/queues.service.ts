@@ -6,6 +6,7 @@ import { Errors } from '../../common/errors';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { TenantSettingsService } from '../org/org-core.service';
+import { TelephonyRegistry } from '../telephony/registry.service';
 
 export interface QueueCounts {
   queueId: string;
@@ -23,6 +24,7 @@ export class QueuesService {
     private readonly prisma: PrismaService,
     private readonly settings: TenantSettingsService,
     private readonly audit: AuditService,
+    private readonly telephony: TelephonyRegistry,
   ) {}
 
   /** Queue counts from persisted state; "eligibleNow" applies consent, suppression and attempt rules. */
@@ -80,7 +82,26 @@ export class QueuesService {
     }));
   }
 
+  /**
+   * A queue's caller ID must be a number the tenant's real provider account can present (in India,
+   * a number rented on that Plivo account). Simulated providers accept any well-formed number.
+   */
+  private async validCallerId(tenantId: string, raw: string | null | undefined): Promise<string | null> {
+    if (!raw) return null;
+    // Same rule as the Integrations page: E.164 after removing formatting. The provider account,
+    // not phone-number metadata, decides which numbers are usable (e.g. 140/1600 series).
+    const callerId = raw.replace(/[\s().-]/g, '');
+    if (!/^\+[1-9]\d{6,14}$/.test(callerId)) throw Errors.validation([{ path: 'callerId', message: 'Enter the caller ID in international format, e.g. +914412345678' }]);
+    const { provider } = await this.telephony.resolve(tenantId);
+    const allowed = provider && !provider.capabilities.simulated ? provider.callerIds() : [];
+    if (allowed.length && !allowed.includes(callerId)) {
+      throw Errors.validation([{ path: 'callerId', message: `Use one of the numbers on your Plivo account: ${allowed.join(', ')}` }]);
+    }
+    return callerId;
+  }
+
   async save(ctx: RequestContext, body: z.output<typeof queueSchema>, id?: string) {
+    const callerId = await this.validCallerId(ctx.tenantId, body.callerId);
     const agents = await this.prisma.db.membership.findMany({ where: { tenantId: ctx.tenantId, id: { in: body.memberIds }, role: 'AGENT' }, select: { id: true } });
     if (agents.length !== body.memberIds.length) throw Errors.badRequest('INVALID_MEMBER', 'Queue members must be agents of this organization');
     if (id) {
@@ -90,8 +111,8 @@ export class QueuesService {
     }
     const queue = await this.prisma.db.$transaction(async (tx) => {
       const q = id
-        ? await tx.queue.update({ where: { id, tenantId: ctx.tenantId }, data: { name: body.name, description: body.description, active: body.active, callerId: body.callerId } })
-        : await tx.queue.create({ data: { tenantId: ctx.tenantId, name: body.name, description: body.description, active: body.active, callerId: body.callerId } });
+        ? await tx.queue.update({ where: { id, tenantId: ctx.tenantId }, data: { name: body.name, description: body.description, active: body.active, callerId } })
+        : await tx.queue.create({ data: { tenantId: ctx.tenantId, name: body.name, description: body.description, active: body.active, callerId } });
       await tx.queueMember.deleteMany({ where: { tenantId: ctx.tenantId, queueId: q.id } });
       if (body.memberIds.length) await tx.queueMember.createMany({ data: body.memberIds.map((membershipId) => ({ tenantId: ctx.tenantId, queueId: q.id, membershipId })) });
       return q;

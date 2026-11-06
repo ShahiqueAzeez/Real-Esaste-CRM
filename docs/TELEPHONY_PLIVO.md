@@ -19,7 +19,7 @@ marked **UNVERIFIED** and must be confirmed in the smoke test before a pilot.
 | Call detail record: `client.calls.get(callUuid)` → `billDuration`, `totalAmount`, `totalRate`, `hangupCauseName`, `hangupSource`, … | SDK `RetrieveCallResponse` | Cost reconciliation and stuck-call recovery. |
 | Browser JWT: `client.token.create(authId, { sub, exp, nbf, incoming_allow, outgoing_allow, app })` → `POST /v1/Account/{auth_id}/JWT/Token/`, response `{ apiId, token }`. | SDK `resources/token.js`; Plivo JWT auth doc | Receive-only token for the agent browser. |
 | Locally signed JWTs are rejected by Plivo SIP infrastructure; use the token API. | Plivo JWT auth doc (search index) | We never sign Plivo JWTs ourselves. |
-| Browser SDK: `new Plivo(options)`, `client.loginWithAccessToken(token)`, `client.loginWithAccessTokenGenerator({ getAccessToken(): Promise<string> })`, `answer(callUUID, action)`, `reject`, `hangup`, `mute`, `unmute`, `logout`. JWT login needs SDK ≥ 2.2.16. | `plivo-browser-sdk` `index.d.ts` and bundle | `apps/web/src/lib/telephony/plivo-browser.ts`. |
+| Browser SDK: `new Plivo(options)`, `client.loginWithAccessToken(token)`, `client.loginWithAccessTokenGenerator({ getAccessToken(): Promise<string> })`, `answer(callUUID, action)`, `reject`, `hangup`, `mute`, `unmute`, `logout`. JWT login needs SDK ≥ 2.2.16. | `plivo-browser-sdk` `index.d.ts` and bundle | `apps/web/src/lib/telephony/browser-phone.ts`. |
 | Browser events: `onLogin`, `onLoginFailed`, `onIncomingCall(callerName, extraHeaders, callInfo)`, `onIncomingCallCanceled`, `onCallAnswered`, `onCallTerminated`, `onCallFailed`, `onMediaConnected`, `onConnectionChange`, `onPermissionDenied`, `onWebrtcNotSupported`. | SDK bundle | Device/connection status on the agent screen. |
 | Signature V3: headers `X-Plivo-Signature-V3`, `X-Plivo-Signature-Ma-V3`, `X-Plivo-Signature-V3-Nonce`; HMAC-SHA256 with the auth token over URL + sorted params + `.` + nonce; header may hold several comma-separated signatures. | SDK `utils/v3Security.js`; Plivo signature-validation doc | `PlivoSignatureVerifier` calls the SDK's own `validateV3Signature`. |
 | MultiPartyCall XML (`addMultiPartyCall`) attributes include `role`, `coachMode`, `startMpcOnEnter`, `endMpcOnExit`, `record`, `recordingCallbackUrl`, `statusCallbackUrl`, `statusCallbackEvents`, `maxDuration`, `stayAlone`, `enterSound`, `exitSound`. | SDK `utils/plivoxml.js` | Agent and customer join `call-<id>`. |
@@ -56,7 +56,7 @@ From Plivo's *India Calling Regulations*, *India Number KYC* and *Calling in Ind
    DLT registration**. See `docs/COMPLIANCE_INDIA.md`.
 
 If browser calling is not supported for the account, set the tenant's default calling mode to
-`PHONE` (Settings → Calling). The adapter, state machine and UI are identical; only the agent leg's
+`PHONE` (Settings → Calling → Default calling mode). The adapter, state machine and UI are identical; only the agent leg's
 destination changes.
 
 ## Call design implemented
@@ -77,6 +77,12 @@ supervisor  : multiPartyCalls.addParticipant("supervisor", { friendlyName: "call
 
 Webhook URLs are built from `PUBLIC_BASE_URL`. Signature validation uses that exact URL, so the
 value must match what Plivo calls (scheme, host, port and path).
+
+**Local testing against real Plivo** needs a public HTTPS URL that reaches your machine (a tunnel
+to `localhost:3000` in development, or to Caddy on `localhost:8080` with Docker Compose). Set
+`PUBLIC_BASE_URL` and `WEB_ORIGIN` to it. Plivo cannot call `localhost`, and the Plivo SDK's XML
+builder rejects callback URLs without a public host name; when that happens the answer webhook
+returns hang-up XML and the call fails with a logged error instead of hanging.
 
 ## Which legs incur charges
 
@@ -101,7 +107,7 @@ never presents estimates as invoices.
 - [ ] DLT registration (principal entity / telemarketer) completed as required by your operator.
 - [ ] HTTP auth enabled on recording URLs (Plivo console → Voice settings). Recording URLs are
       public by default.
-- [ ] Auth ID / Auth Token stored in the CRM (Settings → Integrations → Plivo). A subaccount per
+- [ ] Auth ID / Auth Token stored in the CRM (Integrations → Plivo). A subaccount per
       tenant is recommended.
 - [ ] `PUBLIC_BASE_URL` reachable over HTTPS from Plivo.
 - [ ] Browser calling confirmed with Plivo for India, or tenant switched to phone mode.
@@ -110,7 +116,7 @@ never presents estimates as invoices.
 
 Run only with approved test numbers that belong to people who agreed to receive test calls.
 
-1. Set the tenant's Plivo credentials and caller ID in Settings → Integrations. Press **Test
+1. Set the tenant's Plivo credentials and caller ID in Integrations. Press **Test
    connection** (fetches account details; no call is placed). Status must turn *Configured*.
 2. Create a queue with one lead whose number is your own approved test phone, consent `GRANTED`.
 3. Sign in as an agent in Chrome. The device check must show *Microphone OK* and

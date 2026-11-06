@@ -79,7 +79,7 @@ export class TelephonyRegistry {
   async forTenant(tenantId: string): Promise<TelephonyProvider> {
     const { provider } = await this.resolve(tenantId);
     if (!provider) {
-      throw Errors.unavailable('TELEPHONY_NOT_CONFIGURED', 'Calling is not set up. An administrator must add Plivo credentials in Settings → Integrations.');
+      throw Errors.unavailable('TELEPHONY_NOT_CONFIGURED', 'Calling is not set up. An administrator must add Plivo credentials in Integrations.');
     }
     return provider;
   }

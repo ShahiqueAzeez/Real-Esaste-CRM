@@ -298,7 +298,7 @@ export class CallLifecycleService {
         call.failureReason === 'compliance_block'
           ? null
           : call.failureReason === 'provider_error'
-            ? 'The telephony provider rejected the call. Check Settings → Integrations, then resume.'
+            ? 'The telephony provider rejected the call. Ask an administrator to check Integrations, then resume.'
             : status === 'FAILED'
               ? 'Your line did not answer. Check your browser audio or phone, then resume.'
               : 'Call ended before the customer was dialled.';

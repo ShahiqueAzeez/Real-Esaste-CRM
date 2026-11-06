@@ -213,6 +213,39 @@ describe('progressive dialler (simulated provider)', () => {
       expect(st.status).toBe('PAUSED');
     });
 
+    it('survives a provider outage: the call fails cleanly, no attempt is used and the agent is told why', async () => {
+      const { TelephonyRegistry } = await import('../src/modules/telephony/registry.service');
+      const { ProviderError } = await import('../src/modules/telephony/provider');
+      const org4 = await createOrg(t.prisma, { agents: 1 });
+      const [lead] = await addLeads(t.prisma, org4, 1);
+      const c4 = new Client(t.app);
+      await c4.login(org4.agents[0]!.email);
+      await readyAgent(c4);
+      const provider = t.app.get(TelephonyRegistry).mock();
+      const spy = jest.spyOn(provider, 'startLeg').mockRejectedValueOnce(new ProviderError('Provider API unavailable (HTTP 503)', true));
+      try {
+        const dial = await c4.post('/api/agent/dial-next', {}, { 'Idempotency-Key': randomUUID() });
+        expect(dial.status).toBe(200);
+        const s = await waitFor(async () => {
+          const st = await callStatus(c4, dial.body.call.id);
+          return st.status === 'FAILED' ? st : null;
+        });
+        expect(s).toMatchObject({ failureReason: 'provider_error', wrapUpStatus: 'NOT_REQUIRED' });
+      } finally {
+        spy.mockRestore();
+      }
+      const qi = await t.prisma.queueItem.findUniqueOrThrow({ where: { leadId: lead!.id } });
+      expect(qi).toMatchObject({ state: 'WAITING', attempts: 0 });
+      expect((await t.prisma.lead.findUniqueOrThrow({ where: { id: lead!.id } })).attemptCount).toBe(0);
+      const st = await t.prisma.agentState.findUniqueOrThrow({ where: { membershipId: org4.agents[0]!.membershipId } });
+      expect(st.status).toBe('PAUSED');
+      expect(st.pauseReason).toMatch(/telephony provider rejected the call/i);
+      // The agent can resume and the same lead is offered again once the provider recovers.
+      await readyAgent(c4);
+      const retry = await c4.post('/api/agent/dial-next', {}, { 'Idempotency-Key': randomUUID() });
+      expect(retry.body).toMatchObject({ result: 'DIALING', call: { lead: { id: lead!.id } } });
+    });
+
     it('reports only what is persisted', async () => {
       const admin = new Client(t.app);
       await admin.login(org.admin.email);

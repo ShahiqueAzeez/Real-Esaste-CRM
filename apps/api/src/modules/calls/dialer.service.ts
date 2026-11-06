@@ -196,7 +196,11 @@ export class DialerService {
 
         const queue = await tx.queue.findFirstOrThrow({ where: { id: chosen.item.queueId, tenantId: ctx.tenantId } });
         const callerId = queue.callerId ?? provider.defaultCallerId();
-        if (!callerId) throw Errors.precondition('NO_CALLER_ID', 'No caller ID is configured. Add a Plivo number in Settings → Integrations.');
+        if (!callerId) throw Errors.precondition('NO_CALLER_ID', 'No caller ID is configured. Add a Plivo number in Integrations.');
+        const onAccount = provider.capabilities.simulated ? [] : provider.callerIds();
+        if (onAccount.length && !onAccount.includes(callerId)) {
+          throw Errors.precondition('CALLER_ID_NOT_ON_ACCOUNT', `The queue's caller ID ${callerId} is not on the Plivo account. An administrator must update the queue.`);
+        }
         const call = await tx.call.create({
           data: {
             tenantId: ctx.tenantId,

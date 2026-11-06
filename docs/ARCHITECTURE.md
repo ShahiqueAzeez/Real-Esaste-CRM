@@ -63,7 +63,10 @@ correctly across several API instances without sticky state.
 | `whatsapp` | WhatsApp Cloud API adapter (+ mock), templates, policy checks, delivery webhooks, opt-out. |
 | `reports` | Aggregations computed from persisted data only; CSV export. |
 | `billing` | Plans, subscriptions, entitlements, billing ledger (manual/simulated), usage ledger. |
-| `notifications`, `audit`, `settings`, `health`, `realtime`, `mail`, `storage` | Supporting services. |
+| `org` | Organisation profile, tenant settings (calling hours, retry policy, recording, WhatsApp, cost estimates) and configurable outcomes. |
+| `integrations` | Tenant-owned Plivo credentials (encrypted), connection test, removal. |
+| `maintenance`, `worker` | Repeatable sweeps (stale agents, stuck calls, orphaned reservations, pending events, retention) and the BullMQ processors. |
+| `notifications`, `audit`, `health`, `realtime` | Supporting modules. Infrastructure (Prisma, Redis, mail, storage, crypto, logging, jobs) lives in `apps/api/src/infra`. |
 
 ## Multi-tenancy
 
@@ -74,11 +77,12 @@ correctly across several API instances without sticky state.
 * A Prisma client extension (`tenant-guard`) rejects reads, updates and deletes on tenant-owned
   models whose `where` clause lacks `tenantId`. This catches programming mistakes in tests and at
   runtime. System code that legitimately spans tenants (maintenance sweeps, webhooks resolved by an
-  opaque call id) uses an explicit `unscoped` client and is reviewed separately.
+  opaque call id, authentication) uses the explicit `prisma.system` client, which is easy to audit.
 * PostgreSQL row-level security was considered. It requires a `SET LOCAL app.tenant_id` inside a
   transaction for every request, which conflicts with connection pooling and Prisma's query model.
   It is documented as a future hardening step in `docs/SECURITY.md` rather than half-enabled.
-* Tenant isolation is covered by integration tests (`apps/api/test/tenant-isolation.int-spec.ts`).
+* Tenant isolation is covered by integration tests (`apps/api/test/auth-isolation.int-spec.ts`)
+  and the guard itself by unit tests (`apps/api/src/infra/prisma/tenant-guard.spec.ts`).
 
 ## Roles and permissions
 
@@ -132,7 +136,8 @@ leg its own call UUID and hangup callback for clean state tracking.
 
 ### Mock (simulated) mode
 
-`TELEPHONY_PROVIDER=mock` (or a tenant without Plivo credentials in development) uses
+When `ALLOW_MOCK_PROVIDER=true` and a tenant has no Plivo credentials of its own (and no
+platform-owned Plivo account is configured with `TELEPHONY_DEFAULT_PROVIDER=plivo`), calls use
 `MockProvider`. It emits the same normalized events through the same ingestion path, driven by
 BullMQ delayed jobs. Every simulated call is stored with `is_simulated = true` and the UI shows a
 **SIMULATED** badge. Simulated calls never claim that audio or a real call took place.
