@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/* Design tokens: neutral canvas, one restrained accent, semantic status colours (AA contrast). */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-canvas: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-subtle: #f0f2f5;
+  --color-line: #e2e5ea;
+  --color-line-strong: #c9cfd8;
+  --color-ink: #111827;
+  --color-ink-2: #374151;
+  --color-muted: #667085;
+
+  --color-brand: #1d4ed8;
+  --color-brand-hover: #1e40af;
+  --color-brand-soft: #e8eefc;
+
+  --color-ok: #146c43;
+  --color-ok-soft: #e1f3e9;
+  --color-warn: #8a4b00;
+  --color-warn-soft: #fff1d6;
+  --color-bad: #b42318;
+  --color-bad-soft: #fde7e5;
+  --color-info: #075985;
+  --color-info-soft: #e0f0fa;
+  --color-sim: #5b21b6;
+  --color-sim-soft: #efe7fd;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+  [data-sidebar] a[aria-current="page"] {
+    background: var(--color-brand-soft);
+    color: var(--color-brand);
+  }
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgb(29 78 216 / 0.35); }
+  70% { box-shadow: 0 0 0 10px rgb(29 78 216 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(29 78 216 / 0); }
+}
+.animate-pulse-ring { animation: pulse-ring 1.6s ease-out infinite; }

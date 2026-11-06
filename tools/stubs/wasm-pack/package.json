@@ -1,0 +1,6 @@
+{
+  "name": "wasm-pack",
+  "version": "0.12.1",
+  "description": "No-op stub. plivo-browser-sdk declares wasm-pack as a runtime dependency but ships a prebuilt bundle; the real package's postinstall downloads a binary from GitHub, which breaks offline and locked-down installs.",
+  "license": "MIT"
+}
