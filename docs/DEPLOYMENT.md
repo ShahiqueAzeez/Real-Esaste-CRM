@@ -27,7 +27,7 @@ docker build -f apps/api/Dockerfile -t calling-crm/api:1.0.0 .
 docker build -f apps/web/Dockerfile -t calling-crm/web:1.0.0 --build-arg NEXT_PUBLIC_PRODUCT_NAME="Calling CRM" .
 ```
 
-Run both from the `calling-crm` directory. `NEXT_PUBLIC_*` values are compiled into the browser
+Run both from the repository root. `NEXT_PUBLIC_*` values are compiled into the browser
 bundle, so set them at build time. Behind a TLS-intercepting corporate proxy add
 `--build-arg HTTPS_PROXY=…` and `--secret id=extra_ca,src=<ca.pem>`; behind a blocked Debian mirror,
 `--build-arg DEBIAN_MIRROR=<mirror>` (the API image installs OpenSSL for Prisma).

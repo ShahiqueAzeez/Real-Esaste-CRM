@@ -121,7 +121,7 @@ Redis). The e2e command builds and starts the stack and drives a real browser. S
 ## Repository layout
 
 ```
-calling-crm/
+Real-Esaste-CRM/
 ├── packages/shared   domain rules shared by API and web: enums, permissions, settings,
 │                     state machines, calling hours, retry policy, schemas (Zod)
 ├── apps/api          NestJS API + worker (one codebase, two entry points), Prisma schema

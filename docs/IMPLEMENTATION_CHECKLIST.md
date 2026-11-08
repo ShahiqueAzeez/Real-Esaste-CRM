@@ -5,7 +5,7 @@ needs verification with a real provider account · `[ ]` not done.
 `BUILD_STATUS.md` holds the current state, test results and known limitations.
 
 ## Phase 1 — Plan
-- [x] Inspect repository (Westside Dentist static site + voice widget; CRM built in `calling-crm/`, existing site untouched)
+- [x] Standalone repository: npm workspaces monorepo at the repository root
 - [x] Verify Plivo SDK methods, JWT browser login, signature V3, MPC coach mode from official SDK source
 - [x] Document India constraints, blockers and smoke test (`docs/TELEPHONY_PLIVO.md`, `docs/COMPLIANCE_INDIA.md`)
 - [x] Architecture (`docs/ARCHITECTURE.md`), schema (`docs/DATABASE.md`), this checklist

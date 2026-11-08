@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# API, background worker and migration image. Build from the calling-crm directory:
+# API, background worker and migration image. Build from the repository root:
 #   docker build -f apps/api/Dockerfile -t calling-crm/api .
 # One image, three commands:
 #   node dist/main.js                               API (default)

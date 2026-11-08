@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# Web front end (Next.js standalone server). Build from the calling-crm directory:
+# Web front end (Next.js standalone server). Build from the repository root:
 #   docker build -f apps/web/Dockerfile -t calling-crm/web .
 #
 # The browser always calls /api and /socket.io on its own origin; the reverse proxy (Caddy, an

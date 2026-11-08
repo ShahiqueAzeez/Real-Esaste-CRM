@@ -1,6 +1,6 @@
 # Operations
 
-Commands assume Docker Compose from the `calling-crm` directory; on other platforms run the same
+Commands assume Docker Compose from the repository root; on other platforms run the same
 `node dist/...` commands in a one-off API container.
 
 ## Health and monitoring
